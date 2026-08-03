@@ -1,0 +1,29 @@
+{
+  "name": "physteam",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Insert a drive, launch its Steam game. Remove it, the game closes.",
+  "scripts": {
+    "build": "shx rm -rf dist && rollup -c"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@decky/api": "^1.1.2",
+    "@decky/ui": "^4.6.0",
+    "react-icons": "^4.10.1"
+  },
+  "devDependencies": {
+    "@decky/rollup": "^1.0.1",
+    "@types/react": "16.14.0",
+    "@types/react-dom": "16.9.0",
+    "rollup": "^3.0.0",
+    "shx": "^0.3.4",
+    "tslib": "^2.0.0",
+    "typescript": "^5.0.0"
+  },
+  "decky": {
+    "flags": [
+      "debug"
+    ]
+  }
+}
