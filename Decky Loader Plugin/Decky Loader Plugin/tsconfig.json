@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "es2019",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "jsx": "react",
+    "jsxFactory": "window.SP_REACT.createElement",
+    "jsxFragmentFactory": "window.SP_REACT.Fragment",
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "outDir": "dist"
+  },
+  "include": ["src"]
+}
