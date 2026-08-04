@@ -1,6 +1,13 @@
 """physteam.py — PHYsteam"""
 
-import psutil, time, subprocess, os, sys, json, logging, re, threading, base64, tempfile, ctypes, shutil
+import psutil, time, subprocess, os, sys, json, logging, re, threading, base64, tempfile, ctypes, shutil, io
+
+try:
+    import pystray
+    from PIL import Image
+    TRAY_AVAILABLE = True
+except ImportError:
+    TRAY_AVAILABLE = False
 
 BASE_DIR         = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE         = os.path.join(BASE_DIR, "physteam.log")
@@ -22,6 +29,106 @@ def extract_icon():
         return tmp.name
     except Exception:
         return None
+
+def get_game_display_name(app_id):
+    """Numeric App IDs: pull the real title out of the Steam manifest.
+    Non-Steam shortcuts: the app_id IS the display name already (it's
+    whatever was typed into game_id.txt to match the shortcut)."""
+    app_id = app_id.strip()
+    if not app_id.isdigit():
+        return app_id
+    root = find_steam_root()
+    if root:
+        for lib in find_steam_libraries(root):
+            mf = os.path.join(lib, f"appmanifest_{app_id}.acf")
+            if os.path.isfile(mf):
+                try:
+                    txt = open(mf, encoding="utf-8").read()
+                    m = re.search(r'"name"\s+"([^"]+)"', txt)
+                    if m: return m.group(1)
+                except Exception as e:
+                    log(f"Could not read game name from manifest: {e}")
+    return app_id  # fallback: at least show the App ID
+
+# ── System tray ────────────────────────────────────────────────────────────────
+# Current game name (or None if idle) -- read by the menu's status line and
+# written by update_tray_status(). handle_insert/handle_remove run on a
+# background thread, the tray owns the main thread, so this is the handoff.
+current_game_name = None
+
+def build_tray_icon():
+    """Build the tray icon + menu. icon.run() (called from main()) blocks
+    the thread it's called on and pumps the tray's message loop, so the
+    watcher loops (run_auto / enforcer_thread) run in background threads
+    started once the tray is up."""
+    try:
+        image = Image.open(io.BytesIO(base64.b64decode(ICON_PNG_B64)))
+    except Exception as e:
+        log(f"Could not build tray icon image: {e}")
+        return None
+
+    def status_text(item):
+        # pystray re-evaluates callable menu item text each time the menu
+        # is opened, so this always reflects the latest state on right-click.
+        return f"Playing: {current_game_name}" if current_game_name else "Idle — no cartridge"
+
+    def on_configure(icon, item):
+        log("Tray: Configure clicked.")
+        new_cfg = show_setup_gui()
+        if new_cfg is not None:
+            save_config(new_cfg)
+            log("Config changed from tray — restarting PHYsteam to apply it.")
+            icon.stop()
+            args = [a for a in sys.argv if a != "--configure"]
+            os.execv(sys.executable, [sys.executable] + args)
+        else:
+            log("Tray: Configure cancelled.")
+
+    def on_open_log(icon, item):
+        try:
+            os.startfile(LOG_FILE)
+        except Exception as e:
+            log(f"Could not open log file: {e}")
+
+    def on_exit(icon, item):
+        log("Tray: Exit clicked — shutting down PHYsteam.")
+        icon.stop()
+        os._exit(0)
+
+    menu = pystray.Menu(
+        pystray.MenuItem(status_text, None, enabled=False),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("Configure...", on_configure),
+        pystray.MenuItem("Open Log", on_open_log),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("Exit", on_exit),
+    )
+    return pystray.Icon(APP_NAME, image, APP_NAME, menu)
+
+# The running tray icon, if any -- set once in main().
+tray_icon_ref = None
+
+def update_tray_status(game_name):
+    """game_name=None means idle/no cartridge. Updates the right-click
+    menu's status line, the hover tooltip, and pops a balloon notification
+    (if the backend supports it) when a game is inserted."""
+    global current_game_name
+    current_game_name = game_name
+    icon = tray_icon_ref
+    if not icon:
+        return
+    try:
+        if game_name:
+            icon.title = f"{APP_NAME} — Playing: {game_name}"
+            try:
+                icon.notify(f"Now playing {game_name}", title=APP_NAME)
+            except Exception:
+                pass  # not every backend supports notifications; tooltip/menu still update
+        else:
+            icon.title = f"{APP_NAME} — Idle"
+        icon.update_menu()  # force the status line to refresh immediately
+    except Exception as e:
+        log(f"Could not update tray status: {e}")
 
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
     format="%(asctime)s  %(levelname)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
@@ -423,6 +530,7 @@ def handle_insert(drive, require_card=False):
     if app_id:
         ip = find_install_path(app_id)
         if require_card and ip: register_game(app_id, ip)
+        update_tray_status(get_game_display_name(app_id))
     else:
         log("No STEAM_APP_ID — game won't close on removal.")
     log(f"Launching {sp} ...")
@@ -445,6 +553,7 @@ def handle_insert(drive, require_card=False):
 
 def handle_remove(drive, ip):
     log(f"Cartridge removed from {drive}.")
+    update_tray_status(None)
     if ip: kill_by_path(ip)
     else: log("No install path — nothing to close.")
 
@@ -558,8 +667,29 @@ def main():
     req = cfg.get("require_card", False)
     log(f"PHYsteam starting | {cfg}")
     if req: threading.Thread(target=enforcer_thread, daemon=True).start()
+
+    tray_icon = None
+    if TRAY_AVAILABLE:
+        tray_icon = build_tray_icon()
+        if tray_icon is None:
+            log("Tray icon failed to build — continuing without it.")
+        else:
+            global tray_icon_ref
+            tray_icon_ref = tray_icon
+            update_tray_status(None)
+    else:
+        log("pystray not installed — running without a system tray icon. "
+            "Install it with 'pip install pystray pillow' before compiling "
+            "to enable it.")
+
     # PHYsteam always watches every drive on the system — no drive selection.
-    run_auto(req)
+    if tray_icon:
+        # icon.run() blocks and owns the main thread's message loop, so the
+        # watcher itself has to run in a background thread instead.
+        threading.Thread(target=run_auto, args=(req,), daemon=True).start()
+        tray_icon.run()
+    else:
+        run_auto(req)
 
 if __name__ == "__main__":
     main()
