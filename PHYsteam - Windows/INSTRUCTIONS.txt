@@ -5,7 +5,6 @@ PHYsteam Setup:
 Requirements
 
 
-* Windows 10, 11, or Linux(Works best on SteamOS)
 * Steam installed
 * A removable drive
 
@@ -19,15 +18,13 @@ Installation Instructions:
 
 2. Decide whether you want to require game cartridges after they've been inserted.(Check the box if yes, leave blank and press "Submit" if no)
 
-3. Place your preferred files on the cartridge(At least the one "launch_game_*" script is required and will not work on the wrong Operating System.)
-   autorun and logo are for adding an icon to the drive in file explorer in desktop mode.(Optional, see the Logo section of this text document.)
+3. Place your preferred files on the cartridge. At least game_id.txt and launch_game_windows.exe are required(autorun and logo are for adding an icon to the drive in file explorer in desktop mode.(Optional, see the Logo section of this text document.)
 
-4. If you want to make the cartridge for an official steam app already on the steam store, see section 4a. If it's a non steam game, visit section 4b. Open the "launch_game_*" script
-   for your Operating System.
+4. If you want to make the cartridge for an official steam app already on the steam store, see section 4a. If it's a non steam game, visit section 4b. Open the "game_id.txt" script for your Operating System.
 
   4a. Visit the store.steampowered.com store page for the game you want to play. Look in the URL at the top for a number between two   
-      "/". Copy and Replace {APP_ID} with that number.
-  4b. Replace {APP_ID} near the top of the "launch_game_*" with the exact name of your non steam game that shows up in Steam.
+      "/". Copy and Replace {APP_ID} with that number. eg. 105600 for Terraria
+  4b. Simply add the exact title of the non steam games properties menu. Find this by right clicking on the game in your library and select "Properties..."
 
 5. Remove and insert the game to launch it.
 
